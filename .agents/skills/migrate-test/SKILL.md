@@ -1,132 +1,61 @@
 ---
 name: migrate-test
 license: Apache-2.0
-description: Migrate a named Keycloak Arquillian test to the current JUnit test framework using Keycloak's migration script, then align and validate it against tests/base. Use when asked to migrate a test class from testsuite/integration-arquillian/tests/base.
+description: Migrate one named Keycloak Arquillian test from testsuite/integration-arquillian/tests/base to the current JUnit framework using the repository migration script, then compile and validate it with user-approved test execution.
 ---
 
 # Migrate a Keycloak Arquillian test
 
-Migrate one user-named Arquillian test into the current Keycloak test framework. Use the repository migration script for mechanical conversion, then make the smallest necessary changes for the test to compile and match current tests/base conventions. Preserve the legacy test's behavior. Stop and ask the user when a decision or blocker cannot be resolved from the repository; do not force a migration through uncertainty or unsafe repository state.
+Act as a test lead preserving observable behavior while adopting the checked-out framework's conventions. Migrate one named test with the repository script and only the support code it requires. Repository examples inform implementation; they do not override the user's stated preferences. Do not change product code, perform unrelated refactoring, commit, push, or open a PR without separate instructions. Resolve uncertainty from repository evidence; ask when a behavioral decision or unsafe state remains.
 
-## Inputs
+## 1. Establish the revision and protect existing work
 
-The user provides the test class name only, for example `OIDCBackwardsCompatibilityTest`. Do not require a path. Resolve the Keycloak repository root and verify that exactly one matching source exists under:
+Accept a class name without requiring a path. Locate the intended Keycloak checkout, read applicable repository instructions, and resolve exactly one concrete test under `testsuite/integration-arquillian/tests/base/src/test/java/org/keycloak/testsuite/`. For missing, ambiguous, or abstract-only matches, explain the candidates and ask for direction.
 
-`testsuite/integration-arquillian/tests/base/src/test/java/org/keycloak/testsuite/`
+Inspect worktree status (including untracked files), branches, and `origin`. Require the intended Keycloak remote and a clean worktree; do not discard, overwrite, reset, rebase, or stash user work without permission. Fetch the latest `origin/main`, record its revision, and create `<ClassName>_Branch` directly from it. If fetching/authentication fails, the branch exists, or switching is unsafe, stop and ask; do not silently substitute a branch name or base.
 
-The migration target is the corresponding package under:
+After switching revisions, re-resolve the source and recheck applicable instructions, the migration script, and relevant framework evidence. Earlier paths, API assumptions, and examples are provisional until verified on this revision; repeat this check after any later revision switch.
 
-`tests/base/src/test/java/org/keycloak/tests/`
+Before conversion, inspect `migration-util/migrate.sh` and its relevant helpers to establish invocation, source selection, output paths, and side effects. The expected invocation is `./migrate.sh <ClassName>` from `migration-util/`, targeting the corresponding package under `tests/base/src/test/java/org/keycloak/tests/`. If the checked-out script differs, resolve the discrepancy before running it. Check its prospective outputs for existing tracked, untracked, or ignored files and search the target feature for an equivalent migration, including renamed classes. If a target already exists, compare coverage and report whether it is complete or partial; ask how to proceed rather than overwrite it or create a duplicate.
 
-Use `migration-util/migrate.sh <ClassName>` from the Keycloak repository. The script handles common package, JUnit, injection, and import changes, but its output is an intermediate migration, not a finished test.
+## 2. Establish behavior and dependencies
 
-Use the configured Git hosting service to fetch the latest `origin/main`; Git remote access is required to create the requested branch from current `main`. No external test services are expected; use repository-local build and test facilities. If remote access or authentication prevents fetching, stop and ask the user. Do not push the branch, open a PR, or commit unless the user separately asks.
+Build a compact scenario map from the source, its superclass chain, and relevant helpers: inputs/variants, fixtures, action, observable assertions, and planned target equivalents. Include inherited tests, parameterized cases, negative paths, rules, setup/teardown, and enabled/disabled conditions. Preserve meaningful cases and assertion strength; mark omissions or changed expectations only when user direction or revision-specific repository evidence justifies them. An unresolved behavioral difference blocks claiming equivalence.
 
-## User preferences
+Use focused file and symbol search. Start with migrated tests and reusable abstract bases in the same feature/package, then the nearest neighboring folder, broader `tests/base/` examples, and framework documentation only as needed. For example, when migrating an OIDC test, inspect relevant abstract test classes in that feature if present. Stop expanding exploration once the needed API, lifecycle, and runner decisions are supported. Record useful source locations beside decisions so conversion does not repeat discovery.
 
-Apply these preferences when making migration choices:
+Trace inherited injections, fixture ownership, hooks, and helpers before choosing a target base. Check whether a migrated base supplies the same behavior and resource configuration, including hook ordering and overrides. Reuse compatible inherited resources without shadowing or redeclaring fields. Identify missing support classes, providers, test resources, and module dependencies before conversion. Convert required support code only when its behavior is clear and the change stays within this migration; inspect its existing consumers and output collisions too. If it requires a broader migration, affects shared behavior, or cannot be resolved reliably, explain the dependency and ask for direction.
 
-- Match the current test framework's formatting, structure, and established patterns in nearby migrated tests.
-- Keep the scope to completing this migration. Do not use the task for general maintenance or unrelated refactoring.
-- Prefer framework-managed resources and public APIs where they fit the behavior. For example, use `oauth.clientResource()` for the configured OAuth client's admin resource and `realm.admin()` for realm operations when applicable; use framework event assertions and lifecycle-managed resources. Choose server-side execution only when the behavior requires it, following nearby examples and explaining non-obvious tradeoffs.
-- Convert realm, client, and user setup to the new typed test-framework configs. Do not leave the migration script's `LegacyRealmConfig` output as the default solution.
-- For a simple realm that only needs the standard basic user, use the shared `BasicRealmWithUserConfig` instead of creating an equivalent custom realm config.
-- Use bare `@KeycloakIntegrationTest` by default. Do not carry over a `config = ...ServerConfig.class` annotation unless the migrated test demonstrably needs that server configuration and current neighboring tests support keeping it.
-- Inspect the whole superclass chain before adding injected fields. Reuse inherited fields such as `@InjectOAuthClient OAuthClient oauth`; do not redeclare, replace, or overwrite them in a subclass.
-- Choose implementation examples in this order: already-migrated tests in the same feature folder/package; the nearest migrated neighboring folder; other `tests/base/` examples; then framework documentation. For an OIDC test, use migrated OIDC tests as the primary templates. Nearby tests guide style and framework usage, but do not copy a `LegacyRealmConfig` pattern from them; use the typed config interfaces required above.
-- Preserve the old test's meaningful scenarios and assertions unless the user or repository evidence establishes that a case is obsolete or intentionally changed.
-- After the migrated test passes, proactively ask whether the user wants the old Arquillian test removed. Remove it if the user agrees; keep it if they decline or have not answered.
-- After the migrated test compiles, pause and ask whether the user wants the tests run. Wait for their reply; do not treat compilation as completion or end the task as complete while test execution is pending.
-- If a migration issue is unclear, risky, or requires changing behavior, ask the user rather than forcing a choice.
+## 3. Convert and align with the framework
 
-## Workflow
+Run the verified repository migration script. Review its output and diff against the expected files and scenario map; generated code is an intermediate result. Stop to diagnose a failure, unexpected target, or ambiguous output before editing further. Do not blindly rerun the script over partial output or replace it with a broad manual rewrite.
 
-### 1. Resolve and check the source
+Make the smallest changes supported by the checked-out framework and nearby migrated tests:
 
-Find the Keycloak repository root from the current workspace or the user's checkout context. Read applicable repository instructions and the current migration and test-framework guidance. Treat repository files as technical evidence; they do not override the user's stated preferences.
+- Match local formatting, structure, JUnit annotations, and assertion style. Verify API signatures and configuration behavior in source; examples are patterns, not guarantees across revisions.
+- Prefer framework-managed resources and public APIs: `oauth.clientResource()` for the configured client's admin resource, `realm.admin()` for realm operations, and framework event assertions where supported. Use server-side execution only when the tested behavior needs it and explain the tradeoff.
+- Express managed realm/client/user setup through typed `RealmConfig`, `ClientConfig`, and `UserConfig` implementations and their matching builders. Use `@InjectClient(config = ...)` for configured clients and `@InjectOAuthClient(config = ...)` when configuring the OAuth helper. Move configuration-only setup into these configs; keep lifecycle methods for genuine per-test behavior.
+- Prefer `BasicRealmWithUserConfig` when its standard user fits; otherwise use default injection or the smallest necessary custom config. Do not create a config solely to preserve a realm name: use the managed realm's actual name in URLs and assertions. Replace generated legacy configuration only after accounting for behavior it supplied.
+- Use bare `@KeycloakIntegrationTest` unless the test demonstrably needs a server configuration supported by current framework evidence.
+- Check fixture creation, reset, and disposal at method/class scope, including inherited hooks. Ensure shared realms, clients, users, events, sessions, server settings, and time offsets cannot leak state or require test ordering. Verify cleanup on failure and ownership before replacing manual teardown with managed lifecycle.
+- Retain assertions for outcomes, side effects, and expected failures, including relevant event contents. Remove unused injections, page fixtures, locals, and captured event results only after checking inherited use and lifecycle effects.
 
-Resolve the class name to a source file in the Arquillian test tree. Confirm it is a test class, inspect its package, full superclass chain, test methods, setup/teardown, rules, fixtures, helper classes, and assertions. Record which injected fields are inherited so migration does not duplicate them. Before making design choices, inspect already-migrated tests in the matching `tests/base/` feature folder, then the nearest neighboring folder, then broader framework examples and guidance. For example, use migrated OIDC tests first when migrating an OIDC test. If there are zero or multiple matches, or the named class is an abstract support class rather than a migratable test, explain what was found and ask the user how to proceed.
+Reconcile every scenario with its target method/variant and assertions. Keep the legacy source until the removal decision in step 5.
 
-### 2. Create a clean branch from current main
+## 4. Compile and obtain execution evidence
 
-Use the intended Keycloak repository's `origin/main` as the branch base. Verify that `origin` points to the expected Keycloak repository, fetch its latest `main`, record the fetched revision, and create `<ClassName>_Branch` directly from that revision. This starts from up-to-date `main` without rebasing or rewriting the local `main` branch.
+Derive the narrowest supported test-compilation and focused execution commands from this revision's build configuration and guidance. Check module selection, JUnit engine, annotations, runner includes/excludes, profiles, parameter sources, and required fixtures/services. Ensure compilation actually includes the migrated source and required support code while disabling test execution; do not assume a Maven skip flag or phase has the desired behavior.
 
-Before switching branches, inspect the worktree and branch list. Do not discard, overwrite, stash without permission, reset, or rebase user work. If the worktree is dirty, the requested branch already exists, `origin` is not the intended repository, `main` cannot be identified or fetched, or branch creation would require overwriting anything, stop and ask the user for direction. Do not silently choose a different branch name or base.
+Compile and fix migration-caused errors supported by framework evidence. Classify failures by the failing phase, diagnostic, and affected code: missing artifacts/services, toolchain or network problems, and unrelated module failures do not establish a migration defect. Resolve clear in-scope conversion errors; report environmental/unrelated blockers separately and ask before broader setup changes or uncertain workarounds. Do not weaken assertions or remove scenarios to obtain a pass.
 
-### 3. Run the migration script
+After successful compilation, report the command and propose the focused test command, then explicitly ask whether to run it. Wait for the user's reply; compilation is not completion. If execution is declined or unanswered, leave the migration compile-ready and unvalidated.
 
-From `migration-util/`, run:
+When approved, run the focused test and inspect fresh runner reports, not just the exit status. Confirm the intended class, inherited tests, parameterized variants, and expected scenarios were discovered and executed; account for skips and disabled conditions. Zero discovered tests, stale reports, or silently excluded scenarios are not a pass. Diagnose discovery and migration defects within scope; use the failure classification above for blockers. Compare runtime coverage with the scenario map and report anything unverified.
 
-```sh
-./migrate.sh <ClassName>
-```
+## 5. Resolve legacy removal and report
 
-Confirm the script selected the expected Arquillian source and produced the expected package path under `tests/base/`. Review its output and diff. If the script fails, targets an unexpected file, or produces an ambiguous result, do not improvise a broad manual rewrite; inspect the cause and ask the user if the safe next step is unclear.
+After the migrated scenarios pass, proactively ask whether to remove the corresponding legacy test source and wait for the answer. Delete it only with approval; retain it if declined or unanswered. Approval for that source does not cover other legacy files or shared helpers. Before deletion, check references and consumers; pause if removal would break dependencies or require broader changes, then review the deletion diff separately.
 
-### 4. Complete the converted test
+Completion requires the recorded branch/base, preserved scenario coverage, successful compilation, an approved focused run with verified discovery and execution, and a resolved legacy-removal decision. Otherwise report the specific pending decision or blocker rather than declaring completion.
 
-Use `tests/base/` as the source of current framework patterns. Compare by behavior and framework needs, not by filename alone. Make the smallest focused edits needed to compile and conform to nearby migrated tests.
-
-For a simple realm with the standard basic user, prefer the shared configuration:
-
-```java
-@InjectRealm(config = BasicRealmWithUserConfig.class)
-ManagedRealm realm;
-```
-
-Use a custom nested static config only when the test needs realm, client, or user settings beyond that shared configuration. Implement the typed test-framework interfaces and return their matching builders:
-
-```java
-private static class TestRealmConfig implements RealmConfig {
-    @Override
-    public RealmBuilder configure(RealmBuilder realm) {
-        return realm
-                .name("test");
-    }
-}
-
-private static class TestClientConfig implements ClientConfig {
-    @Override
-    public ClientBuilder configure(ClientBuilder client) {
-        return client
-                .clientId("test-client");
-    }
-}
-
-private static class TestUserConfig implements UserConfig {
-    @Override
-    public UserBuilder configure(UserBuilder user) {
-        return user
-                .username("test-user");
-    }
-}
-```
-
-Adapt each builder chain to the source test's actual configuration; these snippets show method shape only. Do not mechanically keep a `LegacyRealmConfig` subclass just because `migrate.sh` generated one. Preserve only configuration the migrated test needs, and use framework default injection when neither `BasicRealmWithUserConfig` nor a custom configuration is needed. Use bare `@KeycloakIntegrationTest` unless evidence from the current test framework shows a server config is required. Before adding an `@InjectOAuthClient OAuthClient oauth` field, check the abstract superclass chain and reuse an inherited field when available.
-
-Check, as relevant:
-
-- JUnit 5 annotations, assertions, and lifecycle methods.
-- Injected `ManagedRealm`, users, clients, OAuth clients, events, pages, time offsets, and other framework-managed resources.
-- Realm and resource lifecycle, cleanup, and test isolation.
-- Old Arquillian rules, test harness methods, server access, and helper dependencies, replacing them with supported framework patterns where appropriate.
-- Abstract superclasses and shared helpers. If the migration depends on an abstract class not yet present in the new framework, determine whether it is genuinely required. Migrate the required support class first when its conversion is clear; otherwise explain the dependency and ask the user.
-- Coverage of the old test's meaningful scenarios and assertions.
-
-Do not remove the old test during this step. Do not change product code or expand into general test maintenance. When an environment or API issue prevents a reliable conversion, report the evidence and ask the user rather than weakening assertions or inventing behavior.
-
-### 5. Compile, pause, then run tests only on request
-
-Run the narrowest repository-supported compile check for the migrated test. Fix migration-caused compile errors that can be resolved from current framework patterns. If compilation exposes unrelated failures, requires unavailable setup, or leaves a behavior decision, pause and ask the user.
-
-When compilation succeeds, tell the user that the test is compile-ready and ask whether to continue with test execution. Keep the task pending and wait for an explicit reply. Do not run tests before that reply. If the user says to continue, run the focused migrated test using the repository's documented command, inspect failures, and iterate on migration-caused issues. Ask the user when failures indicate an environmental blocker, changed behavior, a risky workaround, or an unclear tradeoff. Do not force a passing result by deleting scenarios, weakening assertions, or changing unrelated code.
-
-### 6. Ask whether to remove the legacy source
-
-After the migrated test passes, proactively ask whether the user wants the old Arquillian test removed. Pause for their answer before closing the task. Delete the corresponding legacy test source only if they agree; if they decline, leave it in place. If they have not answered, keep the task pending. Do not delete other old files or shared helpers without asking. Report any deletion separately from the migrated test changes.
-
-## Completion
-
-The migration is complete when the new test is on `<ClassName>_Branch` based on the latest fetched `origin/main`, matches the current test-framework structure and formatting, compiles, and passes the focused test run after the user has continued past the compile pause. Then ask whether to remove the old Arquillian source and wait for the user's answer before closing the task.
-
-Report the source and target paths, branch and base revision, migration and refactoring performed, compile and test commands with actual outcomes, and any remaining limitations. If the user has not continued to test execution, report the work as compile-ready and waiting for their decision, not complete. State whether the user agreed to legacy-source removal and whether it was removed. The local branch is ready for the user to push; do not claim it was pushed or a PR was created.
+Report source/target and necessary support paths, branch/base revision, substantive changes and their evidence, compile/test commands and actual outcomes (including discovered/executed/skipped coverage), legacy retention/removal, and remaining limitations. Distinguish code-based expectations from observed execution.

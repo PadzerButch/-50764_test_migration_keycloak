@@ -208,6 +208,7 @@ public interface InterfaceOIDCIdentityProviderStoreTokenTest extends InterfaceId
                     .attribute("backchannelSupported", Boolean.TRUE.toString())
                     .attribute(OIDCIdentityProviderConfig.JWKS_URL, "http://localhost:8080/realms/" + EXTERNAL_REALM_NAME + "/protocol/openid-connect/cert")
                     .storeToken(true)
+                    .attribute(OIDCIdentityProviderConfig.VALIDATE_SIGNATURE, Boolean.FALSE.toString())
                     .addReadTokenRoleOnCreate(true)
                     .build());
             return realm;

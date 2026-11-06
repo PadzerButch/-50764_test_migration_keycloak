@@ -15,9 +15,7 @@
  * limitations under the License.
  */
 
-package org.keycloak.testsuite.oidc;
-
-import java.io.IOException;
+package org.keycloak.tests.oidc;
 
 import org.keycloak.OAuthErrorException;
 import org.keycloak.admin.client.resource.ClientResource;
@@ -26,23 +24,22 @@ import org.keycloak.events.Errors;
 import org.keycloak.events.EventType;
 import org.keycloak.protocol.oidc.OIDCAdvancedConfigWrapper;
 import org.keycloak.representations.idm.ClientRepresentation;
-import org.keycloak.representations.idm.EventRepresentation;
-import org.keycloak.representations.idm.RealmRepresentation;
+import org.keycloak.testframework.annotations.InjectEvents;
+import org.keycloak.testframework.annotations.InjectKeycloakUrls;
+import org.keycloak.testframework.annotations.InjectRealm;
+import org.keycloak.testframework.annotations.KeycloakIntegrationTest;
 import org.keycloak.testframework.events.EventAssertion;
-import org.keycloak.testsuite.AbstractTestRealmKeycloakTest;
-import org.keycloak.testsuite.AssertEvents;
-import org.keycloak.testsuite.admin.AdminApiUtil;
-import org.keycloak.testsuite.pages.ErrorPage;
-import org.keycloak.testsuite.pages.LoginPage;
-import org.keycloak.testsuite.pages.OAuthGrantPage;
-import org.keycloak.testsuite.util.ClientManager;
+import org.keycloak.testframework.events.Events;
+import org.keycloak.testframework.injection.LifeCycle;
+import org.keycloak.testframework.oauth.OAuthClient;
+import org.keycloak.testframework.oauth.annotations.InjectOAuthClient;
+import org.keycloak.testframework.realm.ManagedRealm;
+import org.keycloak.testframework.server.KeycloakUrls;
+import org.keycloak.tests.common.BasicRealmWithUserConfig;
 import org.keycloak.testsuite.util.oauth.AuthorizationEndpointResponse;
 
-import org.jboss.arquillian.graphene.page.Page;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -50,48 +47,32 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * @author <a href="mailto:mposolda@redhat.com">Marek Posolda</a>
  */
-public class OIDCBackwardsCompatibilityTest extends AbstractTestRealmKeycloakTest {
+@KeycloakIntegrationTest
+public class OIDCBackwardsCompatibilityTest {
 
-    @Rule
-    public AssertEvents events = new AssertEvents(this);
+    @InjectRealm(config = BasicRealmWithUserConfig.class, lifecycle = LifeCycle.METHOD)
+    ManagedRealm managedRealm;
 
-    @Page
-    protected LoginPage loginPage;
+    @InjectOAuthClient(lifecycle = LifeCycle.METHOD)
+    OAuthClient oauth;
 
-    @Page
-    protected OAuthGrantPage grantPage;
+    @InjectEvents
+    Events events;
 
-    @Page
-    protected ErrorPage errorPage;
-
-    @Override
-    public void configureTestRealm(RealmRepresentation testRealm) {
-    }
-
-    @Before
-    public void clientConfiguration() {
-        ClientManager.realm(adminClient.realm("test")).clientId("test-app").directAccessGrant(true);
-        /*
-         * Configure the default client ID. Seems like OAuthClient is keeping the state of clientID
-         * For example: If some test case configure oauth.clientId("sample-public-client"), other tests
-         * will faile and the clientID will always be "sample-public-client
-         * @see AccessTokenTest#testAuthorizationNegotiateHeaderIgnored()
-         */
-        oauth.client("test-app", "password");
-    }
-
+    @InjectKeycloakUrls
+    KeycloakUrls urls;
 
     // KEYCLOAK-6286
     @Test
     public void testExcludeSessionStateParameter() {
         // Open login form and login successfully. Assert session_state is present
-        AuthorizationEndpointResponse authzResponse = oauth.doLogin("test-user@localhost", "password");
-        EventRepresentation loginEvent = EventAssertion.expectLoginSuccess(events.poll()).getEvent();
+        AuthorizationEndpointResponse authzResponse = oauth.doLogin(BasicRealmWithUserConfig.USERNAME, BasicRealmWithUserConfig.PASSWORD);
+        EventAssertion.expectLoginSuccess(events.poll());
         Assertions.assertTrue(oauth.parseLoginResponse().isSuccess());
         Assertions.assertNotNull(authzResponse.getSessionState());
 
         // Switch "exclude session_state" to on
-        ClientResource client = AdminApiUtil.findClientByClientId(adminClient.realm("test"), "test-app");
+        ClientResource client = oauth.clientResource();
         ClientRepresentation clientRep = client.toRepresentation();
         OIDCAdvancedConfigWrapper config = OIDCAdvancedConfigWrapper.fromClientRepresentation(clientRep);
         config.setExcludeSessionStateFromAuthResponse(true);
@@ -100,7 +81,7 @@ public class OIDCBackwardsCompatibilityTest extends AbstractTestRealmKeycloakTes
         // Open login again and assert session_state not present
         oauth.openLoginForm();
         Assertions.assertTrue(oauth.parseLoginResponse().isSuccess());
-        EventAssertion.expectLoginSuccess(events.poll()).details(Details.USERNAME, "test-user@localhost");
+        EventAssertion.expectLoginSuccess(events.poll()).details(Details.USERNAME, BasicRealmWithUserConfig.USERNAME);
 
         authzResponse = oauth.parseLoginResponse();
         Assertions.assertNull(authzResponse.getSessionState());
@@ -113,13 +94,13 @@ public class OIDCBackwardsCompatibilityTest extends AbstractTestRealmKeycloakTes
     @Test
     public void testExcludeIssuerParameter() {
         // Open login form and login successfully. Assert iss parameter is present
-        AuthorizationEndpointResponse authzResponse = oauth.doLogin("test-user@localhost", "password");
+        AuthorizationEndpointResponse authzResponse = oauth.doLogin(BasicRealmWithUserConfig.USERNAME, BasicRealmWithUserConfig.PASSWORD);
         EventAssertion.expectLoginSuccess(events.poll());
         Assertions.assertTrue(oauth.parseLoginResponse().isSuccess());
-        Assertions.assertEquals(oauth.AUTH_SERVER_ROOT + "/realms/test", authzResponse.getIssuer());
+        Assertions.assertEquals(urls.getBase() + "/realms/" + managedRealm.getName(), authzResponse.getIssuer());
 
         // Switch "exclude iss" to on
-        ClientResource client = AdminApiUtil.findClientByClientId(adminClient.realm("test"), "test-app");
+        ClientResource client = oauth.clientResource();
         ClientRepresentation clientRep = client.toRepresentation();
         OIDCAdvancedConfigWrapper config = OIDCAdvancedConfigWrapper.fromClientRepresentation(clientRep);
         config.setExcludeIssuerFromAuthResponse(true);
@@ -128,7 +109,7 @@ public class OIDCBackwardsCompatibilityTest extends AbstractTestRealmKeycloakTes
         // Open login again and assert iss parameter is not present
         oauth.openLoginForm();
         Assertions.assertTrue(oauth.parseLoginResponse().isSuccess());
-        EventAssertion.expectLoginSuccess(events.poll()).details(Details.USERNAME, "test-user@localhost");
+        EventAssertion.expectLoginSuccess(events.poll()).details(Details.USERNAME, BasicRealmWithUserConfig.USERNAME);
 
         authzResponse = oauth.parseLoginResponse();
         Assertions.assertNull(authzResponse.getIssuer());
@@ -139,7 +120,7 @@ public class OIDCBackwardsCompatibilityTest extends AbstractTestRealmKeycloakTes
     }
 
     @Test
-    public void testExcludeIssuerParameterOnError() throws IOException {
+    public void testExcludeIssuerParameterOnError() {
         // Open login form and login fails. Assert iss parameter is present
         oauth.responseType("tokenn");
         oauth.openLoginForm();
@@ -147,12 +128,12 @@ public class OIDCBackwardsCompatibilityTest extends AbstractTestRealmKeycloakTes
         AuthorizationEndpointResponse errorResponse = oauth.parseLoginResponse();
         assertTrue(errorResponse.isRedirected());
         Assertions.assertEquals(errorResponse.getError(), OAuthErrorException.UNSUPPORTED_RESPONSE_TYPE);
-        Assertions.assertEquals(oauth.AUTH_SERVER_ROOT + "/realms/test", errorResponse.getIssuer());
+        Assertions.assertEquals(urls.getBase() + "/realms/" + managedRealm.getName(), errorResponse.getIssuer());
 
         EventAssertion.assertError(events.poll()).type(EventType.LOGIN_ERROR).error(Errors.INVALID_REQUEST).userId(null).sessionId(null).details(Details.RESPONSE_TYPE, "tokenn");
 
         // Switch "exclude iss" to on
-        ClientResource client = AdminApiUtil.findClientByClientId(adminClient.realm("test"), "test-app");
+        ClientResource client = oauth.clientResource();
         ClientRepresentation clientRep = client.toRepresentation();
         OIDCAdvancedConfigWrapper config = OIDCAdvancedConfigWrapper.fromClientRepresentation(clientRep);
         config.setExcludeIssuerFromAuthResponse(true);

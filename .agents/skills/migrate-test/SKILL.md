@@ -29,11 +29,12 @@ Apply these preferences when making migration choices:
 - Match the current test framework's formatting, structure, and established patterns in nearby migrated tests.
 - Keep the scope to completing this migration. Do not use the task for general maintenance or unrelated refactoring.
 - Prefer framework-managed resources and public APIs where they fit the behavior. For example, use `oauth.clientResource()` for the configured OAuth client's admin resource and `realm.admin()` for realm operations when applicable; use framework event assertions and lifecycle-managed resources. Choose server-side execution only when the behavior requires it, following nearby examples and explaining non-obvious tradeoffs.
-- Convert realm, client, and user setup to the new typed test-framework configs. Do not leave the migration script's `LegacyRealmConfig` output as the default solution.
-- For a simple realm that only needs the standard basic user, use the shared `BasicRealmWithUserConfig` instead of creating an equivalent custom realm config.
+- Express realm, client, and user setup declaratively through the test framework's typed configs. Use `@InjectClient(config = ...)` with a `ClientConfig` for configured managed clients; use `@InjectOAuthClient(config = ...)` when the test needs the OAuth helper configured for that client. Avoid retaining `@BeforeEach` setup whose only purpose is to configure a client or other managed resource.
+- Prefer the shared `BasicRealmWithUserConfig` when its standard user fits the test. Do not add a custom `RealmConfig` just to set a realm name; use the framework's managed realm name in assertions and URLs where possible. Add custom realm configuration only for behavior the shared config does not provide.
+- Inject only resources needed to set up or exercise the test. Remove stale or redundant injected fields, unused local values (including event values captured but never read), and unused page fixtures. Prefer an existing shared realm config over injecting a user solely to recreate that config's standard user.
 - Use bare `@KeycloakIntegrationTest` by default. Do not carry over a `config = ...ServerConfig.class` annotation unless the migrated test demonstrably needs that server configuration and current neighboring tests support keeping it.
-- Inspect the whole superclass chain before adding injected fields. Reuse inherited fields such as `@InjectOAuthClient OAuthClient oauth`; do not redeclare, replace, or overwrite them in a subclass.
-- Choose implementation examples in this order: already-migrated tests in the same feature folder/package; the nearest migrated neighboring folder; other `tests/base/` examples; then framework documentation. For an OIDC test, use migrated OIDC tests as the primary templates. Nearby tests guide style and framework usage, but do not copy a `LegacyRealmConfig` pattern from them; use the typed config interfaces required above.
+- Inspect the legacy superclass chain and current `tests/base/` abstract tests before adding resources. Reuse a suitable migrated base class and its injected resources or helpers when it already matches the test's behavior; do not redeclare inherited fields.
+- Choose implementation examples in this order: already-migrated tests and reusable abstract bases in the same feature folder/package; the nearest migrated neighboring folder; other `tests/base/` examples; then framework documentation. For an OIDC test, use migrated OIDC tests and shared bases such as `AbstractOIDCScopeTest` as primary templates. Treat them as patterns to reuse where suitable, not structures to copy mechanically.
 - Preserve the old test's meaningful scenarios and assertions unless the user or repository evidence establishes that a case is obsolete or intentionally changed.
 - After the migrated test passes, proactively ask whether the user wants the old Arquillian test removed. Remove it if the user agrees; keep it if they decline or have not answered.
 - After the migrated test compiles, pause and ask whether the user wants the tests run. Wait for their reply; do not treat compilation as completion or end the task as complete while test execution is pending.
@@ -65,23 +66,25 @@ Confirm the script selected the expected Arquillian source and produced the expe
 
 ### 4. Complete the converted test
 
-Use `tests/base/` as the source of current framework patterns. Compare by behavior and framework needs, not by filename alone. Make the smallest focused edits needed to compile and conform to nearby migrated tests.
+Use `tests/base/` as the source of current framework patterns. Compare by behavior and framework needs, not by filename alone. Make the smallest focused edits needed to compile and conform to nearby migrated tests. Reuse a nearby abstract test when it supplies the right shared setup; avoid duplicating its injected resources and helpers.
 
-For a simple realm with the standard basic user, prefer the shared configuration:
+Before finalizing the migrated file, inspect the existing tests in its target directory. Treat the nearest migrated neighbours as the primary guide for the file's structure, formatting, setup, resource injection, helper usage, and assertion style. Follow the local implementation pattern unless the legacy test's behavior or a documented framework requirement calls for a different approach; explain any necessary deviation.
+
+When the standard basic user matches the old test's needs, use the shared configuration rather than adding a realm config just to preserve a legacy realm name:
 
 ```java
 @InjectRealm(config = BasicRealmWithUserConfig.class)
 ManagedRealm realm;
 ```
 
-Use a custom nested static config only when the test needs realm, client, or user settings beyond that shared configuration. Implement the typed test-framework interfaces and return their matching builders:
+Use custom nested configs only when the test needs realm, client, or user settings beyond the shared configurations. A config whose only change is `RealmBuilder.name(...)` is usually unnecessary; refer to the injected realm's actual name when constructing expectations. Implement typed test-framework interfaces and return their matching builders:
 
 ```java
 private static class TestRealmConfig implements RealmConfig {
     @Override
     public RealmBuilder configure(RealmBuilder realm) {
         return realm
-                .name("test");
+                .loginWithEmailAllowed(true);
     }
 }
 
@@ -104,6 +107,8 @@ private static class TestUserConfig implements UserConfig {
 
 Adapt each builder chain to the source test's actual configuration; these snippets show method shape only. Do not mechanically keep a `LegacyRealmConfig` subclass just because `migrate.sh` generated one. Preserve only configuration the migrated test needs, and use framework default injection when neither `BasicRealmWithUserConfig` nor a custom configuration is needed. Use bare `@KeycloakIntegrationTest` unless evidence from the current test framework shows a server config is required. Before adding an `@InjectOAuthClient OAuthClient oauth` field, check the abstract superclass chain and reuse an inherited field when available.
 
+Move client configuration from a legacy setup method into `ClientConfig` and managed client injection when the framework supports it. Keep a lifecycle method only for per-test behavior that cannot be represented by resource configuration. Remove unused injections and captured values; for example, if an event assertion is sufficient, do not assign its result to a local that is never read.
+
 Check, as relevant:
 
 - JUnit 5 annotations, assertions, and lifecycle methods.
@@ -111,6 +116,7 @@ Check, as relevant:
 - Realm and resource lifecycle, cleanup, and test isolation.
 - Old Arquillian rules, test harness methods, server access, and helper dependencies, replacing them with supported framework patterns where appropriate.
 - Abstract superclasses and shared helpers. If the migration depends on an abstract class not yet present in the new framework, determine whether it is genuinely required. Migrate the required support class first when its conversion is clear; otherwise explain the dependency and ask the user.
+- Unused values and fixtures left by mechanical conversion, such as an event result that is never referenced or an injected page that the test does not use.
 - Coverage of the old test's meaningful scenarios and assertions.
 
 Do not remove the old test during this step. Do not change product code or expand into general test maintenance. When an environment or API issue prevents a reliable conversion, report the evidence and ask the user rather than weakening assertions or inventing behavior.

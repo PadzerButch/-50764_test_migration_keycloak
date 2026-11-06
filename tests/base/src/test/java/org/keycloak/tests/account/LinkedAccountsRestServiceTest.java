@@ -26,6 +26,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import org.keycloak.admin.client.resource.IdentityProviderResource;
+import org.keycloak.broker.oidc.OIDCIdentityProviderConfig;
 import org.keycloak.broker.saml.SAMLIdentityProviderConfig;
 import org.keycloak.http.simple.SimpleHttp;
 import org.keycloak.representations.account.AccountLinkUriRepresentation;
@@ -404,6 +405,8 @@ public class LinkedAccountsRestServiceTest {
                     if ("saml".equals(idpInfo[0])) {
                         idpBuilder.attribute(SAMLIdentityProviderConfig.VALIDATE_SIGNATURE, "false")
                                 .attribute(SAMLIdentityProviderConfig.WANT_ASSERTIONS_SIGNED, "false");
+                    } else {
+                        idpBuilder.attribute(OIDCIdentityProviderConfig.VALIDATE_SIGNATURE, "false");
                     }
                     testRealm.addIdentityProvider(idpBuilder.build());
                 }

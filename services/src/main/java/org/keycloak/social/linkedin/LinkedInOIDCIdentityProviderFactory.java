@@ -84,6 +84,9 @@ public class LinkedInOIDCIdentityProviderFactory extends AbstractIdentityProvide
             config.setUserInfoUrl(local.getUserinfoEndpoint());
         }
         config.setUseJwksUrl(true);
+        config.getConfig().putIfAbsent(OIDCIdentityProviderConfig.USE_JWKS_URL, "true");
+        config.getConfig().putIfAbsent(OIDCIdentityProviderConfig.JWKS_URL, local.getJwksUri());
+        config.getConfig().putIfAbsent(OIDCIdentityProviderConfig.VALIDATE_SIGNATURE, "true");
         config.setJwksUrl(local.getJwksUri());
         config.setValidateSignature(true);
         config.setDisableNonce(true); // linkedin does not manage nonce correctly
@@ -92,7 +95,10 @@ public class LinkedInOIDCIdentityProviderFactory extends AbstractIdentityProvide
 
     @Override
     public OIDCIdentityProviderConfig createConfig() {
-        return new OIDCIdentityProviderConfig();
+        OIDCIdentityProviderConfig config = new OIDCIdentityProviderConfig();
+        config.setUseJwksUrl(true);
+        config.setJwksUrl("https://www.linkedin.com/oauth/openid/jwks");
+        return config;
     }
 
     private static OIDCConfigurationRepresentation getWellKnownMetadata(KeycloakSession session) {

@@ -521,6 +521,7 @@ public class LoginPageTest {
             realm.identityProviders(IdentityProviderBuilder.create()
                         .providerId("github")
                         .alias("github")
+                        .attribute("validateSignature", "false")
                         .build());
             realm.identityProviders(IdentityProviderBuilder.create()
                         .providerId("saml")
